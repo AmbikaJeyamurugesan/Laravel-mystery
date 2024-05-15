@@ -12,8 +12,19 @@ use App\Jobs\SendVerificationEmailJob;
 
 class AuthController extends Controller
 {
+
+    protected $limiter;
+
+    public function __construct(RateLimiter $limiter)
+    {
+        $this->limiter = $limiter;
+    }
+
     public function register(Request $request)
     {
+        // Rate limit the register API
+        $this->ensureRegisterAttemptsAreNotExceeded($request);
+
         // Validate request data
         $request->validate([
             'email' => 'required|email|unique:users,email',
@@ -38,8 +49,19 @@ class AuthController extends Controller
             'action' => 'register',
         ]);
 
+        return response()->json(['message' => 'User registered successfully'], 201);
+    }
 
-        return response()->json(['message' => 'User registered successfully'], 201); // Return a status code along with the message
+    protected function ensureRegisterAttemptsAreNotExceeded(Request $request)
+    {
+        if ($this->limiter->tooManyAttempts($this->registerThrottleKey($request), 1)) {
+            return response()->json(['error' => 'Too many registration attempts. Please try again later.'], 429);
+        }
+    }
+
+    protected function registerThrottleKey(Request $request)
+    {
+        return mb_strtolower($request->input('email')) . '|' . $request->ip();
     }
 
     public function verify(Request $request)
@@ -71,12 +93,6 @@ class AuthController extends Controller
         return response()->json(['message' => 'User account verified successfully']);
     }
 
-    protected $limiter;
-
-    public function __construct(RateLimiter $limiter)
-    {
-        $this->limiter = $limiter;
-    }
 
     public function login(Request $request)
     {
