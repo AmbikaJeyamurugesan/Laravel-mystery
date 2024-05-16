@@ -21,7 +21,7 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
 
 
 // Register route
-Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:1,1');
+Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:1,1,register');
 
 Route::post('/verify', [AuthController::class, 'verify']);
-Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login');
+Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:2,1,login');

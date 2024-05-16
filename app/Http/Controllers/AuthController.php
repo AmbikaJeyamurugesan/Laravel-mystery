@@ -22,6 +22,12 @@ class AuthController extends Controller
 
     public function register(Request $request)
     {
+        // Check if the email already exists
+        $existingUser = User::where('email', $request->email)->first();
+        if ($existingUser) {
+            return response()->json(['error' => 'Email is already registered'], 422);
+        }
+
         // Rate limit the register API
         $this->ensureRegisterAttemptsAreNotExceeded($request);
 
@@ -61,37 +67,40 @@ class AuthController extends Controller
 
     protected function registerThrottleKey(Request $request)
     {
-        return mb_strtolower($request->input('email')) . '|' . $request->ip();
+        return 'register|' . mb_strtolower($request->input('email')) . '|' . $request->ip();
     }
 
     public function verify(Request $request)
-    {
-        // Validate request data
-        $request->validate([
-            'email' => 'required|email',
-            'verification_code' => 'required',
-        ]);
+{
+    // Validate request data
+    $request->validate([
+        'email' => 'required|email',
+        'verification_code' => 'required',
+    ]);
 
-        // Find user by email and verification code
-        $user = User::where('email', $request->email)
-                    ->where('verification_code', $request->verification_code)
-                    ->first();
+    // Find user by email
+    $user = User::where('email', $request->email)->first();
 
-        if (!$user) {
-            return response()->json(['error' => 'Invalid verification code'], 422);
-        }
-
-        // Activate user account
-        $user->update(['verified' => true]);
-
-        // Log the event
-        Log::create([
-            'user_id' => $user->id,
-            'action' => 'verify',
-        ]);
-
-        return response()->json(['message' => 'User account verified successfully']);
+    if (!$user) {
+        return response()->json(['error' => 'Incorrect username'], 422);
     }
+
+    // Check if the verification code matches
+    if ($user->verification_code !== $request->verification_code) {
+        return response()->json(['error' => 'Incorrect verification code'], 422);
+    }
+
+    // Activate user account
+    $user->update(['verified' => true]);
+
+    // Log the event
+    Log::create([
+        'user_id' => $user->id,
+        'action' => 'verify',
+    ]);
+
+    return response()->json(['message' => 'User account verified successfully']);
+}
 
 
     public function login(Request $request)
@@ -103,6 +112,11 @@ class AuthController extends Controller
             'email' => 'required|email',
             'password' => 'required',
         ]);
+
+        $user = User::where('email', $request->email)->first();
+        if (!$user) {
+            return response()->json(['error' => 'Unregistered email'], 401);
+        }
 
         // Authenticate user
         if (!auth()->attempt($request->only('email', 'password'))) {
@@ -124,7 +138,7 @@ class AuthController extends Controller
 
     protected function ensureLoginAttemptsAreNotExceeded(Request $request)
     {
-        if ($this->limiter->tooManyAttempts($this->throttleKey($request), 3)) {
+        if ($this->limiter->tooManyAttempts($this->throttleKey($request), 2)) {
             return response()->json(['error' => 'Too many login attempts. Please try again later.'], 429);
         }
     }
@@ -137,7 +151,7 @@ class AuthController extends Controller
 
     protected function throttleKey(Request $request)
     {
-        return mb_strtolower($request->input('email')).'|'.$request->ip();
+        return 'login|' . mb_strtolower($request->input('email')).'|'.$request->ip();
     }
 
 }
